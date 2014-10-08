@@ -26,3 +26,11 @@
 *.exe
 *.out
 *.app
+
+# Logs
+*.log
+*.tlog
+
+# Debug
+Debug/*.*
+WinampAutoDJ/Debug/*.*
