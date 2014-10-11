@@ -18,6 +18,7 @@ last song in a playlist finishes.
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <sqlite3.h>
 
 #define WINAMP_BUTTON1 40044
 #define WINAMP_BUTTON2 40045
@@ -153,10 +154,28 @@ extern "C" __declspec(dllexport) winampGeneralPurposePlugin * winampGetGeneralPu
   return &plugin;
 }
 
+void openDB(){
+	sqlite3 *db;
+	char *zErrMsg = 0;
+	int rc;
+
+	rc = sqlite3_open("Winamp-AutoDJ.db", &db);
+
+	if (rc){
+		fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
+		exit(0);
+	}
+	else{
+		fprintf(stderr, "Opened database successfully\n");
+	}
+	sqlite3_close(db);
+}
+
 wchar_t* find_new_song(){ 
 	//find most fitting song to previously played song
 	//add to playlist
 	wchar_t* song = L"E:\\filz\\audio\\other\\02 Rattled by the Rush.mp3";
+	openDB();
 	return song;
 }
 
@@ -224,4 +243,3 @@ void nuke_manually_overridden(wchar_t* prev, wchar_t* curr){
 	// if song skipped or manually changed
 	//   write songpair(previous - current) to DB: 0
 }
-

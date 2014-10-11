@@ -41,6 +41,7 @@
     <None Include="app.ico">
       <Filter>Ressourcendateien</Filter>
     </None>
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="app.rc">

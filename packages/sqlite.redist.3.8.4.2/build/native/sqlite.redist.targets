@@ -1,0 +1,97 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" InitialTargets="sqlite_redist_init;sqlite_redist_init_2">
+  <PropertyGroup Label="Default initializers for properties">
+    <Linkage-sqlite_redist Condition="'$(Linkage-sqlite_redist)' == ''">dynamic</Linkage-sqlite_redist>
+    <CallingConvention-sqlite_redist Condition="'$(CallingConvention-sqlite_redist)' == ''">cdecl</CallingConvention-sqlite_redist>
+  </PropertyGroup>
+  <Target Name="sqlite_redist_init">
+    <sqlite_redist_Contains Text="Linkage-dynamic" Library="sqlite_redist" Value="dynamic" Condition="'$(Linkage-sqlite_redist)'==''">
+      <Output TaskParameter="Result" PropertyName="Linkage-sqlite_redist" />
+    </sqlite_redist_Contains>
+    <sqlite_redist_Contains Text="Linkage-static" Library="sqlite_redist" Value="static" Condition="'$(Linkage-sqlite_redist)'==''">
+      <Output TaskParameter="Result" PropertyName="Linkage-sqlite_redist" />
+    </sqlite_redist_Contains>
+    <sqlite_redist_Contains Text="Linkage-ltcg" Library="sqlite_redist" Value="ltcg" Condition="'$(Linkage-sqlite_redist)'==''">
+      <Output TaskParameter="Result" PropertyName="Linkage-sqlite_redist" />
+    </sqlite_redist_Contains>
+    <sqlite_redist_Contains Text="Linkage-sxs" Library="sqlite_redist" Value="sxs" Condition="'$(Linkage-sqlite_redist)'==''">
+      <Output TaskParameter="Result" PropertyName="Linkage-sqlite_redist" />
+    </sqlite_redist_Contains>
+    <sqlite_redist_Contains Text="CallingConvention-cdecl" Library="sqlite_redist" Value="cdecl" Condition="'$(CallingConvention-sqlite_redist)'==''">
+      <Output TaskParameter="Result" PropertyName="CallingConvention-sqlite_redist" />
+    </sqlite_redist_Contains>
+    <sqlite_redist_Contains Text="CallingConvention-stdcall" Library="sqlite_redist" Value="stdcall" Condition="'$(CallingConvention-sqlite_redist)'==''">
+      <Output TaskParameter="Result" PropertyName="CallingConvention-sqlite_redist" />
+    </sqlite_redist_Contains>
+    <sqlite_redist_Contains Text="CallingConvention-fastcall" Library="sqlite_redist" Value="fastcall" Condition="'$(CallingConvention-sqlite_redist)'==''">
+      <Output TaskParameter="Result" PropertyName="CallingConvention-sqlite_redist" />
+    </sqlite_redist_Contains>
+    <sqlite_redist_Contains Text="CallingConvention-thiscall" Library="sqlite_redist" Value="thiscall" Condition="'$(CallingConvention-sqlite_redist)'==''">
+      <Output TaskParameter="Result" PropertyName="CallingConvention-sqlite_redist" />
+    </sqlite_redist_Contains>
+    <sqlite_redist_Contains Text="CallingConvention-clrcall" Library="sqlite_redist" Value="clrcall" Condition="'$(CallingConvention-sqlite_redist)'==''">
+      <Output TaskParameter="Result" PropertyName="CallingConvention-sqlite_redist" />
+    </sqlite_redist_Contains>
+  </Target>
+  <Target Name="sqlite_redist_init_2">
+    <SetEnv Condition="'$(Platform.ToLower())' == 'win32' And ( $(Configuration.ToLower().IndexOf('debug')) &gt; -1 )" Name="PATH" Prefix="true" Value="$(MSBuildThisFileDirectory)../..//build/native/bin/Win32\Debug">
+      <Output TaskParameter="OutputEnvironmentVariable" PropertyName="PATH" />
+    </SetEnv>
+    <SetEnv Condition="'$(Platform.ToLower())' == 'win32' And ( $(Configuration.ToLower().IndexOf('debug')) == -1 )" Name="PATH" Prefix="true" Value="$(MSBuildThisFileDirectory)../..//build/native/bin/Win32\Release">
+      <Output TaskParameter="OutputEnvironmentVariable" PropertyName="PATH" />
+    </SetEnv>
+    <SetEnv Condition="'$(Platform.ToLower())' == 'x64' And ( $(Configuration.ToLower().IndexOf('debug')) &gt; -1 )" Name="PATH" Prefix="true" Value="$(MSBuildThisFileDirectory)../..//build/native/bin/x64\Debug">
+      <Output TaskParameter="OutputEnvironmentVariable" PropertyName="PATH" />
+    </SetEnv>
+    <SetEnv Condition="'$(Platform.ToLower())' == 'x64' And ( $(Configuration.ToLower().IndexOf('debug')) == -1 )" Name="PATH" Prefix="true" Value="$(MSBuildThisFileDirectory)../..//build/native/bin/x64\Release">
+      <Output TaskParameter="OutputEnvironmentVariable" PropertyName="PATH" />
+    </SetEnv>
+  </Target>
+  <ItemGroup Label="Win32 and Debug" Condition="'$(Platform.ToLower())' == 'win32' And ( $(Configuration.ToLower().IndexOf('debug')) &gt; -1 )">
+    <None Include="$(MSBuildThisFileDirectory)../..//build/native/bin/Win32\Debug\sqlite3.dll" Condition="(('$(AppContainerApplication.ToLower())' == 'true')) OR (('$(TargetPlatformIdentifier.ToLower())' == 'windows phone' And '$(TargetPlatformVersion)' == '8.0'))">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+  </ItemGroup>
+  <ItemGroup Label="Win32 and Release" Condition="'$(Platform.ToLower())' == 'win32' And ( $(Configuration.ToLower().IndexOf('debug')) == -1 )">
+    <None Include="$(MSBuildThisFileDirectory)../..//build/native/bin/Win32\Release\sqlite3.dll" Condition="(('$(AppContainerApplication.ToLower())' == 'true')) OR (('$(TargetPlatformIdentifier.ToLower())' == 'windows phone' And '$(TargetPlatformVersion)' == '8.0'))">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+  </ItemGroup>
+  <ItemGroup Label="x64 and Debug" Condition="'$(Platform.ToLower())' == 'x64' And ( $(Configuration.ToLower().IndexOf('debug')) &gt; -1 )">
+    <None Include="$(MSBuildThisFileDirectory)../..//build/native/bin/x64\Debug\sqlite3.dll" Condition="(('$(AppContainerApplication.ToLower())' == 'true')) OR (('$(TargetPlatformIdentifier.ToLower())' == 'windows phone' And '$(TargetPlatformVersion)' == '8.0'))">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+  </ItemGroup>
+  <ItemGroup Label="x64 and Release" Condition="'$(Platform.ToLower())' == 'x64' And ( $(Configuration.ToLower().IndexOf('debug')) == -1 )">
+    <None Include="$(MSBuildThisFileDirectory)../..//build/native/bin/x64\Release\sqlite3.dll" Condition="(('$(AppContainerApplication.ToLower())' == 'true')) OR (('$(TargetPlatformIdentifier.ToLower())' == 'windows phone' And '$(TargetPlatformVersion)' == '8.0'))">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <PropertyPageSchema Include="$(MSBuildThisFileDirectory)\default-propertiesui.xml" />
+  </ItemGroup>
+  <Target Name="sqlite_redist_AfterBuild" AfterTargets="AfterBuild" />
+  <Target Name="sqlite_redist_AfterBuild_Win32_and_Debug" Label="Win32 and Debug" Condition="'$(Platform.ToLower())' == 'win32' And ( $(Configuration.ToLower().IndexOf('debug')) &gt; -1 )" AfterTargets="sqlite_redist_AfterBuild">
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../..//build/native/bin/Win32\Debug\sqlite3.dll" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="sqlite_redist_AfterBuild_Win32_and_Release" Label="Win32 and Release" Condition="'$(Platform.ToLower())' == 'win32' And ( $(Configuration.ToLower().IndexOf('debug')) == -1 )" AfterTargets="sqlite_redist_AfterBuild">
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../..//build/native/bin/Win32\Release\sqlite3.dll" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="sqlite_redist_AfterBuild_x64_and_Debug" Label="x64 and Debug" Condition="'$(Platform.ToLower())' == 'x64' And ( $(Configuration.ToLower().IndexOf('debug')) &gt; -1 )" AfterTargets="sqlite_redist_AfterBuild">
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../..//build/native/bin/x64\Debug\sqlite3.dll" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="sqlite_redist_AfterBuild_x64_and_Release" Label="x64 and Release" Condition="'$(Platform.ToLower())' == 'x64' And ( $(Configuration.ToLower().IndexOf('debug')) == -1 )" AfterTargets="sqlite_redist_AfterBuild">
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../..//build/native/bin/x64\Release\sqlite3.dll" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <UsingTask TaskName="sqlite_redist_Contains" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.v4.0.dll" TaskFactory="CodeTaskFactory">
+    <ParameterGroup>
+      <Text Output="false" ParameterType="System.String" />
+      <Library Output="false" Required="true" ParameterType="System.String" />
+      <Value Output="false" Required="true" ParameterType="System.String" />
+      <Result Output="true" ParameterType="System.String" />
+    </ParameterGroup>
+    <Task>
+      <Code>Result = ((Text ?? "").Split(';').Contains(Library) ) ? Value : String.Empty;</Code>
+    </Task>
+  </UsingTask>
+</Project>
