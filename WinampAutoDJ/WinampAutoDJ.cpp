@@ -26,6 +26,7 @@ last song in a playlist finishes.
 #define WINAMP_BUTTON4 40047
 #define WINAMP_BUTTON5 40048
 
+#define DB_PATH "Winamp-AutoDJ.db"
 //basic arithmetic operations for weighting
 int autodj_promote(int value){
 	//is used every time two songs are played consecutively
@@ -50,6 +51,9 @@ wchar_t* find_new_song();
 void remember_song_pairs(wchar_t* prev , wchar_t* curr);
 void nuke_manually_overridden(wchar_t* prev, wchar_t* curr);
 void non_stop();
+void openDB();
+
+sqlite3* db;
 
 // this structure contains plugin information, version, name...
 // GPPHDR_VER is the version of the winampGeneralPurposePlugin (GPP) structure
@@ -105,6 +109,7 @@ int init() {
   //MessageBox(plugin.hwndParent, L"Init event triggered for winampAutoDJ, yay. Plugin installed successfully!", L"", MB_OK);
   lpWndProcOld = (WNDPROC)SetWindowLong(plugin.hwndParent, GWL_WNDPROC, (LONG)MainWndProc);
   //todo: setup Database connection
+  openDB();
   return 0;
 }
  
@@ -138,6 +143,7 @@ void quit() {
   //If everything works you should see this message when you quit Winamp once your plugin has been installed.
   //You can change this later to do whatever you want (including nothing)
   //MessageBox(0, L"Quit event triggered for gen_myplugin.", L"", MB_OK);
+	sqlite3_close(db);
 }
 
 
@@ -155,11 +161,10 @@ extern "C" __declspec(dllexport) winampGeneralPurposePlugin * winampGetGeneralPu
 }
 
 void openDB(){
-	sqlite3 *db;
 	char *zErrMsg = 0;
 	int rc;
 
-	rc = sqlite3_open("Winamp-AutoDJ.db", &db);
+	rc = sqlite3_open(DB_PATH, &db);
 
 	if (rc){
 		fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
@@ -168,14 +173,35 @@ void openDB(){
 	else{
 		fprintf(stderr, "Opened database successfully\n");
 	}
-	sqlite3_close(db);
+
+	char* create_table_songs =
+		"CREATE TABLE songs " \
+		"(id INTEGER PRIMARY KEY DESC, " \
+		"artist TEXT(50) NULL, " \
+		"title TEXT(100) NULL, " \
+		"trackno INTEGER NULL, " \
+		"album TEXT(50)  NULL, " \
+		"cover BLOB      NULL, " \
+		"year INTEGER    NULL, " \
+		"genre TEXT(30)  NULL, " \
+		"filename TEXT(200) NOT NULL UNIQUE, " \
+		"md5sum TEXT(32) NULL );";
+
+	char* create_table_ratings = \
+		"CREATE TABLE IF NOT EXISTS ratings("  \
+		"SONG1_ID  INT  NOT NULL," \
+		"SONG2_ID  INT  NOT NULL," \
+		"RATING    INT  DEFAULT 0) "\
+		";";
+
+	rc = sqlite3_exec(db, create_table_songs, NULL, 0, NULL);
+	rc = sqlite3_exec(db, create_table_ratings, NULL, 0, NULL);
 }
 
 wchar_t* find_new_song(){ 
 	//find most fitting song to previously played song
 	//add to playlist
 	wchar_t* song = L"E:\\filz\\audio\\other\\02 Rattled by the Rush.mp3";
-	openDB();
 	return song;
 }
 
@@ -227,6 +253,17 @@ void enqueue_file(wchar_t* file, int index){
 	myfile << CP_encode(msg,CP_OEMCP);
 	myfile.close();*/
 }
+
+void file2db(wchar_t* file){
+	char* insert_song = (char*) malloc(sizeof(wchar_t)*(wcslen(file) + 256));
+	sprintf(insert_song, \
+		"INSERT OR REPLACE INTO songs (filename) values(%s) "\
+		";", \
+		CP_encode(file,CP_UTF8));
+	int rc = sqlite3_open(DB_PATH, &db);
+	rc = sqlite3_exec(db, insert_song, NULL, 0, NULL);
+}
+
 void remember_song_pairs(wchar_t* prev, wchar_t* curr){
 	// if new song starts playing 
 	// (IMPROVE: better not when song was set by non_stop() function )
@@ -237,6 +274,22 @@ void remember_song_pairs(wchar_t* prev, wchar_t* curr){
 		MessageBox(plugin.hwndParent,msg,L"remember_song_pairs",MB_OK);
 	}
 	//TODO: Write to SQLite
+	int prev_id=0; //TODO:get from DB:songs
+	int curr_id=1; //TODO:get from DB:songs
+	int rating=0; //TODO:get from DB:ratings
+	rating = autodj_promote(rating);
+	char* insert_empty_rating = (char*)malloc(sizeof(wchar_t)*(1024));
+	sprintf(insert_empty_rating, \
+		"INSERT INTO ratings (SONG1_ID,SONG2_ID) values(%d,%d);", \
+		prev_id, curr_id);
+	char* insert_rating = (char*)malloc(sizeof(wchar_t)*(1024));
+	sprintf(insert_rating, \
+		"INSERT INTO ratings (RATING) values(%d) WHERE SONG1_ID = %d,SONG2_ID = %d;", \
+		rating, prev_id, curr_id);
+	file2db(prev);
+	file2db(curr);
+	sqlite3_exec(db, insert_empty_rating, NULL, 0, NULL);
+	sqlite3_exec(db, insert_rating, NULL, 0, NULL);
 }
 
 void nuke_manually_overridden(wchar_t* prev, wchar_t* curr){
