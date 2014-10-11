@@ -9,6 +9,7 @@ last song in a playlist finishes.
 */
 #include "stdafx.h"
 #include "wa_ipc.h"
+#include "ipc_pe.h"
 #include <stdio.h>
 #include <windows.h>
 #include "WinampAutoDJ.h"
@@ -17,6 +18,12 @@ last song in a playlist finishes.
 #include <string>
 #include <iostream>
 #include <fstream>
+
+#define WINAMP_BUTTON1 40044
+#define WINAMP_BUTTON2 40045
+#define WINAMP_BUTTON3 40046
+#define WINAMP_BUTTON4 40047
+#define WINAMP_BUTTON5 40048
 
 //basic arithmetic operations for weighting
 int autodj_promote(int value){
@@ -37,7 +44,7 @@ int  init(void);
 void config(void);
 void quit(void);
 
-void enqueue_file(wchar_t* file);
+void enqueue_file(wchar_t* file, int index);
 wchar_t* find_new_song();
 void remember_song_pairs(wchar_t* prev , wchar_t* curr);
 void nuke_manually_overridden(wchar_t* prev, wchar_t* curr);
@@ -78,6 +85,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
 		//int len=SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_GETLISTLENGTH);
 		//int pos=SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_GETLISTPOS);
 		
+		// better IPC_GET_NEXT_PLITEM  combined with IPC_GETLISTPOS
 		if (SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_ISPLAYING) == 0 ){
 			non_stop();
 			//MessageBox(plugin.hwndParent,msg,L"Winamp Lparam",MB_OK);
@@ -132,10 +140,10 @@ void quit() {
 }
 
 
-std::string utf8_encode(const std::wstring &wstr){
-    int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
+std::string CP_encode(const std::wstring &wstr, int CP ){
+    int size_needed = WideCharToMultiByte(CP, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
     std::string strTo( size_needed, 0 );
-    WideCharToMultiByte (CP_UTF8, 0, &wstr[0], (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
+    WideCharToMultiByte (CP, 0, &wstr[0], (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
     return strTo;
 }
  
@@ -148,7 +156,7 @@ extern "C" __declspec(dllexport) winampGeneralPurposePlugin * winampGetGeneralPu
 wchar_t* find_new_song(){ 
 	//find most fitting song to previously played song
 	//add to playlist
-	wchar_t* song = L"E:\\filz\\audio\\Rock\\F-Zero X - Guitar Arrange\\01 - The Long Distance Of Murder.mp3";
+	wchar_t* song = L"E:\\filz\\audio\\other\\02 Rattled by the Rush.mp3";
 	return song;
 }
 
@@ -156,30 +164,50 @@ void non_stop(){
 	//MessageBox(plugin.hwndParent,L"non_stop()",L"Debug",MB_OK);
 	//if playback stops after last playlist song
 	int len=SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_GETLISTLENGTH);
-	enqueue_file(find_new_song());
+	enqueue_file(find_new_song(),len);
 	//  play
-	//SendMessage(plugin.hwndParent,WM_WA_IPC,len-1,IPC_SETPLAYLISTPOS);
-	//SendMessage(plugin.hwndParent,WM_COMMAND,MAKEWPARAM(WINAMP_BUTTON2,0),0);
-	SendMessage(plugin.hwndParent,WM_WA_IPC,len-1,IPC_STARTPLAY);
+	SendMessage(plugin.hwndParent,WM_WA_IPC,len,IPC_SETPLAYLISTPOS);
+	SendMessage(plugin.hwndParent,WM_COMMAND,MAKEWPARAM(WINAMP_BUTTON2,0),0);
+	//SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_STARTPLAY);
 }
 
-void enqueue_file(wchar_t* file){
+void enqueue_file(wchar_t* file, int index){
+	//returns the playlist index of newly enqueued file
 
-	COPYDATASTRUCT cds = {0};
-	cds.dwData = IPC_ENQUEUEFILE;
-	cds.lpData = (void*)utf8_encode(file);
-	cds.cbData = wcslen((wchar_t*)cds.lpData)+1;  // include space for null char
-	SendMessage(plugin.hwndParent,WM_COPYDATA,0,(LPARAM)&cds);
-	wchar_t msg[1024];
-	wsprintf(msg,L"Enqueued %ls (%d)\n",
-	  file,wcslen((wchar_t*)cds.lpData)+1
+
+	/*COPYDATASTRUCT cds = {0};
+	cds.dwData = IPC_PLAYFILE;
+	cds.cbData = sizeof(wchar_t)*(wcslen(file) + 1);  // include space for null char
+	//cds.lpData = malloc(cds.cbData);
+	//memcpy(cds.lpData, file, cds.cbData);
+	std::string buffer = CP_encode(file,CP_UTF8);
+	TCHAR * buffer2 = (TCHAR*) malloc(cds.cbData);
+	memcpy(buffer2, buffer.c_str(), (wcslen(file) + 1));
+	//cds.lpData = (void*) &buffer.c_str();
+	cds.lpData = (void*)buffer2;
+	(void*)file;
+	SendMessage(plugin.hwndParent,WM_COPYDATA,0,(LPARAM)&cds);*/
+	fileinfoW fileinfo;
+	wcscpy_s(fileinfo.file, MAX_PATH, file);
+	HWND pe = (HWND)SendMessage(plugin.hwndParent, WM_WA_IPC, IPC_GETWND_PE, IPC_GETWND);
+	//fileinfo.index = (int)SendMessage(pe, WM_WA_IPC, IPC_PE_GETCURINDEX, 0) + 1;
+	fileinfo.index = index;
+	COPYDATASTRUCT insert;
+	insert.dwData = IPC_PE_INSERTFILENAMEW;
+	insert.lpData = (void*)&fileinfo;
+	insert.cbData = sizeof(fileinfoW);
+	SendMessage(pe, WM_COPYDATA, 0, (LPARAM)&insert);
+	
+	//return index;
+	/*wchar_t msg[1024];
+	wsprintf(msg,L"Enqueued %ls at position (%d)\n",
+		f.file, f.index
 	  );
 	std::ofstream myfile;
 	myfile.open ("debug.txt");
-	myfile << utf8_encode(msg);
-	myfile.close();
+	myfile << CP_encode(msg,CP_OEMCP);
+	myfile.close();*/
 }
-
 void remember_song_pairs(wchar_t* prev, wchar_t* curr){
 	// if new song starts playing 
 	// (IMPROVE: better not when song was set by non_stop() function )
@@ -189,6 +217,7 @@ void remember_song_pairs(wchar_t* prev, wchar_t* curr){
 		wsprintf(msg,L"Remembering: \nPREV : %ls\nCURR: %ls\n",prev,curr);
 		MessageBox(plugin.hwndParent,msg,L"remember_song_pairs",MB_OK);
 	}
+	//TODO: Write to SQLite
 }
 
 void nuke_manually_overridden(wchar_t* prev, wchar_t* curr){
