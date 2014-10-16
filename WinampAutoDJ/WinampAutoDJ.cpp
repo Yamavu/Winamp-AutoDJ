@@ -87,11 +87,11 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
 	} 
 	else if (message==WM_WA_IPC && lParam==IPC_ISPLAYING){
 		//add new file to playlist and play it
-		//int len=SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_GETLISTLENGTH);
-		//int pos=SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_GETLISTPOS);
+		int len=SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_GETLISTLENGTH);
+		int pos=SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_GETLISTPOS);
 		
 		// better IPC_GET_NEXT_PLITEM  combined with IPC_GETLISTPOS
-		if (SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_ISPLAYING) == 0 ){
+		if (SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_ISPLAYING) == 0 && len-1 == pos){
 			non_stop();
 			//MessageBox(plugin.hwndParent,msg,L"Winamp Lparam",MB_OK);
 			
@@ -176,7 +176,7 @@ void openDB(){
 
 	char* create_table_songs =
 		"CREATE TABLE songs " \
-		"(id INTEGER PRIMARY KEY DESC, " \
+		"(id INTEGER PRIMARY KEY AUTOINCREMENT, " \
 		"artist TEXT(50) NULL, " \
 		"title TEXT(100) NULL, " \
 		"trackno INTEGER NULL, " \
@@ -191,8 +191,9 @@ void openDB(){
 		"CREATE TABLE IF NOT EXISTS ratings("  \
 		"SONG1_ID  INT  NOT NULL," \
 		"SONG2_ID  INT  NOT NULL," \
-		"RATING    INT  DEFAULT 0) "\
-		";";
+		"RATING    INT  DEFAULT 0,"\
+		"PRIMARY KEY (SONG1_ID, SONG2_ID)"\
+		");";
 
 	rc = sqlite3_exec(db, create_table_songs, NULL, 0, NULL);
 	rc = sqlite3_exec(db, create_table_ratings, NULL, 0, NULL);
@@ -254,41 +255,80 @@ void enqueue_file(wchar_t* file, int index){
 	myfile.close();*/
 }
 
-void file2db(wchar_t* file){
-	char* insert_song = (char*) malloc(sizeof(wchar_t)*(wcslen(file) + 256));
-	sprintf(insert_song, \
-		"INSERT OR REPLACE INTO songs (filename) values(%s) "\
-		";", \
-		CP_encode(file,CP_UTF8));
-	int rc = sqlite3_open(DB_PATH, &db);
-	rc = sqlite3_exec(db, insert_song, NULL, 0, NULL);
+void file2db(wchar_t* filename){
+	sqlite3_stmt *stmt;
+	sqlite3_prepare_v2(db, "INSERT INTO songs (filename) values(?) ;", -1, &stmt, 0);
+	sqlite3_bind_text16(stmt, 1, std::wstring(filename).c_str(), -1, SQLITE_TRANSIENT);
+	//int rc = sqlite3_open(DB_PATH, &db);
+	sqlite3_step(stmt);
+}
+
+int getSongID(wchar_t* filename){
+	sqlite3_stmt* stmt = NULL;
+	char* sql = "SELECT id FROM songs WHERE filename=?";
+	int retval = sqlite3_prepare_v2( db, sql, -1, &stmt, NULL);
+	sqlite3_bind_text16(stmt, 1, std::wstring(filename).c_str(), -1, SQLITE_TRANSIENT);
+	retval = sqlite3_step(stmt);
+	int id = -1;
+	if (retval == SQLITE_ROW){
+		id = (int)sqlite3_column_int(stmt, 0);
+	}
+	return id;
+}
+
+int get_rating(int prev_id, int curr_id){
+	char* sql = (char*) malloc(200);
+	sqlite3_stmt* stmt;
+	sprintf_s(sql, 200, "SELECT rating FROM ratings WHERE SONG1_ID = %d and SONG2_ID = %d ;", prev_id, curr_id);
+	int retval = sqlite3_prepare16_v2(
+		db,
+		sql,
+		-1,
+		&stmt,
+		NULL
+		);
+	retval = sqlite3_step(stmt);
+	int rating;
+	if (retval == SQLITE_ROW){
+		rating = (int)sqlite3_column_int(stmt, 0);
+	}
+	else if (retval == SQLITE_DONE)
+	{
+		int default_rating = 0;
+		char* insert_empty_rating = (char*)malloc(sizeof(wchar_t)*(1024));
+		sprintf_s(insert_empty_rating, 200, \
+			"INSERT INTO ratings (SONG1_ID,SONG2_ID,RATING) values(%d,%d,%d);\0", \
+			prev_id, curr_id, default_rating);
+		sqlite3_exec(db, insert_empty_rating, NULL, 0, NULL);
+		rating = default_rating;
+	}
+	return rating;
 }
 
 void remember_song_pairs(wchar_t* prev, wchar_t* curr){
 	// if new song starts playing 
 	// (IMPROVE: better not when song was set by non_stop() function )
 	//   set songpair(previous - current) in DB : autodj_promote(current_value)
-	if (wcscmp(prev,curr)!=0){
+	if (wcscmp(prev,curr)!=-10){
 		wchar_t msg[3*MAX_PATH];
 		wsprintf(msg,L"Remembering: \nPREV : %ls\nCURR: %ls\n",prev,curr);
 		MessageBox(plugin.hwndParent,msg,L"remember_song_pairs",MB_OK);
 	}
 	//TODO: Write to SQLite
-	int prev_id=0; //TODO:get from DB:songs
-	int curr_id=1; //TODO:get from DB:songs
-	int rating=0; //TODO:get from DB:ratings
+	int prev_id = getSongID(prev); //TODO:get from DB:songs
+	int curr_id = getSongID(curr); //TODO:get from DB:songs
+	int rating = get_rating(prev_id,curr_id); //TODO:get from DB:ratings
 	rating = autodj_promote(rating);
-	char* insert_empty_rating = (char*)malloc(sizeof(wchar_t)*(1024));
-	sprintf(insert_empty_rating, \
-		"INSERT INTO ratings (SONG1_ID,SONG2_ID) values(%d,%d);", \
-		prev_id, curr_id);
 	char* insert_rating = (char*)malloc(sizeof(wchar_t)*(1024));
-	sprintf(insert_rating, \
-		"INSERT INTO ratings (RATING) values(%d) WHERE SONG1_ID = %d,SONG2_ID = %d;", \
+	sprintf_s(insert_rating, 200, \
+		"UPDATE ratings (RATING) values(%d) WHERE SONG1_ID = %d,SONG2_ID = %d;\0", \
 		rating, prev_id, curr_id);
+	std::ofstream myfile;
+	myfile.open("debug.txt");
+	myfile << insert_rating;
+	myfile.close(); 
 	file2db(prev);
 	file2db(curr);
-	sqlite3_exec(db, insert_empty_rating, NULL, 0, NULL);
 	sqlite3_exec(db, insert_rating, NULL, 0, NULL);
 }
 
