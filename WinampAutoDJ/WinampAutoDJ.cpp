@@ -71,7 +71,7 @@ winampGeneralPurposePlugin plugin = {
 // Message catching
 WNDPROC lpWndProcOld = NULL;
 
-wchar_t previous_song[MAX_PATH-1];
+wchar_t previous_song[MAX_PATH-1] = L"";
 
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -80,7 +80,8 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
 		//int pos=SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_GETLISTPOS);
 		//wchar_t * current_song_ptr = (wchar_t *) SendMessage(plugin.hwndParent,WM_WA_IPC,pos,IPC_GETPLAYLISTFILEW);
 		wchar_t * current_song =(wchar_t*) wParam;
-		remember_song_pairs(previous_song,current_song);
+		if (wcslen(previous_song) != 0)
+			remember_song_pairs(previous_song,current_song);
 		wcscpy_s(previous_song, current_song);
 
 
@@ -146,6 +147,10 @@ void quit() {
 	sqlite3_close(db);
 }
 
+
+void debug(wchar_t* msg){
+	MessageBox(plugin.hwndParent, msg, L"debug", MB_OK);
+}
 
 std::string CP_encode(const std::wstring &wstr, int CP ){
     int size_needed = WideCharToMultiByte(CP, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
@@ -264,7 +269,7 @@ void file2db(wchar_t* filename){
 }
 
 int getSongID(wchar_t* filename){
-	sqlite3_stmt* stmt = NULL;
+	sqlite3_stmt* stmt;
 	char* sql = "SELECT id FROM songs WHERE filename=?";
 	int retval = sqlite3_prepare_v2( db, sql, -1, &stmt, NULL);
 	sqlite3_bind_text16(stmt, 1, std::wstring(filename).c_str(), -1, SQLITE_TRANSIENT);
@@ -273,63 +278,69 @@ int getSongID(wchar_t* filename){
 	if (retval == SQLITE_ROW){
 		id = (int)sqlite3_column_int(stmt, 0);
 	}
+	else{
+		//ToDo: make clean
+		file2db(filename);
+		sqlite3_reset(stmt);
+		sqlite3_bind_text16(stmt, 1, std::wstring(filename).c_str(), -1, SQLITE_TRANSIENT);
+		retval = sqlite3_step(stmt);
+		id = (int)sqlite3_column_int(stmt, 0);
+	}
 	return id;
 }
 
 int get_rating(int prev_id, int curr_id){
+	int default_rating = 0;
+
 	char* sql = (char*) malloc(200);
 	sqlite3_stmt* stmt;
-	sprintf_s(sql, 200, "SELECT rating FROM ratings WHERE SONG1_ID = %d and SONG2_ID = %d ;", prev_id, curr_id);
-	int retval = sqlite3_prepare16_v2(
-		db,
-		sql,
-		-1,
-		&stmt,
-		NULL
-		);
+	sqlite3_prepare_v2(db,"SELECT rating FROM ratings WHERE SONG1_ID = ? and SONG2_ID = ? ;", -1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, prev_id);
+	sqlite3_bind_int(stmt, 2, curr_id);
+	int retval = 0;
+	
 	retval = sqlite3_step(stmt);
-	int rating;
-	if (retval == SQLITE_ROW){
-		rating = (int)sqlite3_column_int(stmt, 0);
+
+	if ( retval == SQLITE_ROW ){
+		int rating = sqlite3_column_int(stmt, 0);
+		wchar_t msg[3 * MAX_PATH];
+		wsprintf(msg, L"rating: %d\n", rating);
+		debug(msg);
+		return rating;
 	}
-	else if (retval == SQLITE_DONE)
+	else 
 	{
-		int default_rating = 0;
-		char* insert_empty_rating = (char*)malloc(sizeof(wchar_t)*(1024));
-		sprintf_s(insert_empty_rating, 200, \
-			"INSERT INTO ratings (SONG1_ID,SONG2_ID,RATING) values(%d,%d,%d);\0", \
-			prev_id, curr_id, default_rating);
-		sqlite3_exec(db, insert_empty_rating, NULL, 0, NULL);
-		rating = default_rating;
+		sqlite3_prepare_v2(db, "INSERT INTO ratings(SONG1_ID, SONG2_ID) values(?, ?);", -1, &stmt, NULL);
+		sqlite3_bind_int(stmt, 1, prev_id);
+		sqlite3_bind_int(stmt, 2, curr_id);
+		sqlite3_step(stmt);
+		return 0;
 	}
-	return rating;
+	
 }
 
 void remember_song_pairs(wchar_t* prev, wchar_t* curr){
 	// if new song starts playing 
 	// (IMPROVE: better not when song was set by non_stop() function )
 	//   set songpair(previous - current) in DB : autodj_promote(current_value)
-	if (wcscmp(prev,curr)!=-10){
-		wchar_t msg[3*MAX_PATH];
-		wsprintf(msg,L"Remembering: \nPREV : %ls\nCURR: %ls\n",prev,curr);
-		MessageBox(plugin.hwndParent,msg,L"remember_song_pairs",MB_OK);
+	
+	//Write to SQLite
+	int prev_id = getSongID(prev); 
+	int curr_id = getSongID(curr); 
+	int rating = get_rating(prev_id,curr_id); 
+	if (wcscmp(prev, curr) != -10){
+		wchar_t msg[3 * MAX_PATH];
+		wsprintf(msg, L"Remembering: \nPREV : %ls\nCURR: %ls\nRating: %d\n", prev, curr,rating);
+		debug(msg);
 	}
-	//TODO: Write to SQLite
-	int prev_id = getSongID(prev); //TODO:get from DB:songs
-	int curr_id = getSongID(curr); //TODO:get from DB:songs
-	int rating = get_rating(prev_id,curr_id); //TODO:get from DB:ratings
 	rating = autodj_promote(rating);
-	char* insert_rating = (char*)malloc(sizeof(wchar_t)*(1024));
-	sprintf_s(insert_rating, 200, \
-		"UPDATE ratings (RATING) values(%d) WHERE SONG1_ID = %d,SONG2_ID = %d;\0", \
-		rating, prev_id, curr_id);
-	std::ofstream myfile;
-	myfile.open("debug.txt");
-	myfile << insert_rating;
-	myfile.close(); 
-	file2db(prev);
-	file2db(curr);
-	sqlite3_exec(db, insert_rating, NULL, 0, NULL);
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(db, "UPDATE ratings SET RATING = ? WHERE SONG1_ID = ? AND SONG2_ID = ?;", -1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, rating);
+	sqlite3_bind_int(stmt, 2, prev_id);
+	sqlite3_bind_int(stmt, 3, curr_id);
+	sqlite3_step(stmt);
+	
 }
 
 void nuke_manually_overridden(wchar_t* prev, wchar_t* curr){
