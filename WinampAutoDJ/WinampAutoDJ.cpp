@@ -19,6 +19,7 @@ last song in a playlist finishes.
 #include <iostream>
 #include <fstream>
 #include <sqlite3.h>
+#include <varargs.h>
 
 #define WINAMP_BUTTON1 40044
 #define WINAMP_BUTTON2 40045
@@ -52,6 +53,7 @@ void remember_song_pairs(wchar_t* prev , wchar_t* curr);
 void nuke_manually_overridden(wchar_t* prev, wchar_t* curr);
 void non_stop();
 void openDB();
+int getSongID(wchar_t* filename);
 
 sqlite3* db;
 
@@ -148,9 +150,16 @@ void quit() {
 }
 
 
-void debug(wchar_t* msg){
+/*void debug(const wchar_t* format,...){
+	va_list argptr;
+	va_start(argptr, format);
+	size_t maxsize = 1024 * sizeof(wchar_t);
+	wchar_t* msg = (wchar_t*) malloc(maxsize);
+	vswprintf(msg, maxsize, format, argptr);
 	MessageBox(plugin.hwndParent, msg, L"debug", MB_OK);
-}
+	va_end(argptr);
+	free(msg);
+}*/
 
 std::string CP_encode(const std::wstring &wstr, int CP ){
     int size_needed = WideCharToMultiByte(CP, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
@@ -207,7 +216,47 @@ void openDB(){
 wchar_t* find_new_song(){ 
 	//find most fitting song to previously played song
 	//add to playlist
-	wchar_t* song = L"E:\\filz\\audio\\other\\02 Rattled by the Rush.mp3";
+
+	int prev_id = getSongID(previous_song);
+	
+	//wchar_t msg[1024];
+	//wsprintf(msg, L"Find new for ID: %d\n", prev_id);
+	//MessageBox(plugin.hwndParent, msg, L"Find new", MB_OK);
+
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(db, "select max(rating) from ratings where song1_id = ?;", -1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, prev_id);
+
+	int retval = sqlite3_step(stmt);
+	int maxrating = 0;
+	int next_id;
+
+	if (retval == SQLITE_ROW){
+		maxrating = sqlite3_column_int(stmt, 0);
+	}
+	if (maxrating != 0){
+		sqlite3_prepare_v2(db, "select Song2_id from ratings where song1_id = ? and rating = ? ORDER BY Random() LIMIT 1;", -1, &stmt, NULL);
+		sqlite3_bind_int(stmt, 1, prev_id);
+		sqlite3_bind_int(stmt, 2, maxrating);
+		sqlite3_step(stmt);
+		next_id = sqlite3_column_int(stmt, 0);
+	}
+	else{
+		//choose random song
+		sqlite3_prepare_v2(db, "select id from songs ORDER BY Random() LIMIT 1;", -1, &stmt, NULL);
+		sqlite3_step(stmt);
+		next_id = sqlite3_column_int(stmt, 0);
+	}
+	//next_id should be available
+	sqlite3_prepare_v2(db, "select filename from songs WHERE ID = ?;", -1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, next_id);
+	sqlite3_step(stmt);
+
+	wchar_t* song = (wchar_t*)sqlite3_column_text16(stmt, 0);
+	
+	//wsprintf(msg, L"Found: %ls\n", song);
+	//MessageBox(plugin.hwndParent, msg, L"Found", MB_OK);
+	//wchar_t* song = L"E:\\filz\\audio\\other\\02 Rattled by the Rush.mp3";
 	return song;
 }
 
@@ -215,8 +264,14 @@ void non_stop(){
 	//MessageBox(plugin.hwndParent,L"non_stop()",L"Debug",MB_OK);
 	//if playback stops after last playlist song
 	int len=SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_GETLISTLENGTH);
-	enqueue_file(find_new_song(),len);
-	//  play
+	wchar_t* new_song = find_new_song();
+	enqueue_file(new_song,len);
+	
+	//handle new file playing ungracefully
+	//ToDo: shoot message to event loop for more gracefullness
+	remember_song_pairs(previous_song, new_song);
+	wcscpy_s(previous_song, new_song);
+	// play
 	SendMessage(plugin.hwndParent,WM_WA_IPC,len,IPC_SETPLAYLISTPOS);
 	SendMessage(plugin.hwndParent,WM_COMMAND,MAKEWPARAM(WINAMP_BUTTON2,0),0);
 	//SendMessage(plugin.hwndParent,WM_WA_IPC,0,IPC_STARTPLAY);
@@ -286,13 +341,13 @@ int getSongID(wchar_t* filename){
 		retval = sqlite3_step(stmt);
 		id = (int)sqlite3_column_int(stmt, 0);
 	}
+	//free(stmt);
 	return id;
 }
 
 int get_rating(int prev_id, int curr_id){
-	int default_rating = 0;
+	int rating = 0; //default
 
-	char* sql = (char*) malloc(200);
 	sqlite3_stmt* stmt;
 	sqlite3_prepare_v2(db,"SELECT rating FROM ratings WHERE SONG1_ID = ? and SONG2_ID = ? ;", -1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, prev_id);
@@ -302,11 +357,8 @@ int get_rating(int prev_id, int curr_id){
 	retval = sqlite3_step(stmt);
 
 	if ( retval == SQLITE_ROW ){
-		int rating = sqlite3_column_int(stmt, 0);
-		wchar_t msg[3 * MAX_PATH];
-		wsprintf(msg, L"rating: %d\n", rating);
-		debug(msg);
-		return rating;
+		rating = sqlite3_column_int(stmt, 0);
+		//debug(L"rating: %d\n", rating);
 	}
 	else 
 	{
@@ -314,9 +366,8 @@ int get_rating(int prev_id, int curr_id){
 		sqlite3_bind_int(stmt, 1, prev_id);
 		sqlite3_bind_int(stmt, 2, curr_id);
 		sqlite3_step(stmt);
-		return 0;
 	}
-	
+	return rating;
 }
 
 void remember_song_pairs(wchar_t* prev, wchar_t* curr){
@@ -329,9 +380,7 @@ void remember_song_pairs(wchar_t* prev, wchar_t* curr){
 	int curr_id = getSongID(curr); 
 	int rating = get_rating(prev_id,curr_id); 
 	if (wcscmp(prev, curr) != -10){
-		wchar_t msg[3 * MAX_PATH];
-		wsprintf(msg, L"Remembering: \nPREV : %ls\nCURR: %ls\nRating: %d\n", prev, curr,rating);
-		debug(msg);
+		//debug(L"Remembering: \nPREV : %ls\nCURR: %ls\nRating: %d\n", prev, curr, rating);
 	}
 	rating = autodj_promote(rating);
 	sqlite3_stmt* stmt;
